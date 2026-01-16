@@ -2,30 +2,52 @@ from bs4 import BeautifulSoup
 import requests
 from urllib.parse import urljoin
 
-with open("url-file.txt", "r") as f:
-    urls = [line.strip() for line in f.readlines()]
+with open("url-file.txt", "r", encoding="utf-8") as f:
+    urls = [line.strip() for line in f if line.strip()]
 
 headers = {"User-Agent": "Mozilla/5.0"}
-f = open("deeper-url-file.txt", "w")
-for link in urls:
-    # print(link)
 
-    # copied from dp-url-scraper.py for reference.
-    html = requests.get(link, headers=headers, timeout=20).text
-    soup = BeautifulSoup(html, "html.parser")
+all_forums = set()
+all_threads = set()
 
-    # forum titles selection based on inspection of html structure.
-    title_form = soup.select('h3.node-title a[data-shortcut="node-description"]')
+with open("deeper-forum-url-file.txt", "w", encoding="utf-8") as forum_out, \
+     open("thread-url-file.txt", "w", encoding="utf-8") as thread_out:
 
-    forums = {}
-    for a in title_form:
-        name = a.get_text(strip=True)
-        url = urljoin(link, a.get("href", "")) # href is used to get relative url.
-        if url:
-            forums[url] = name  # dict dedupes by url
-    # output found forum url's.
-    print(f"Found {len(forums)} forums:\n")
-    for url, name in forums.items():
-        print(name, "->", url)
-        f.write(url + "\n")
-f.close()
+    for link in urls:
+        html = requests.get(link, headers=headers, timeout=20).text
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Forums
+        title_form = soup.select('h3.node-title a[data-shortcut="node-description"]')
+        forums = {}
+        for a in title_form:
+            name = a.get_text(strip=True)
+            url = urljoin(link, a.get("href", ""))
+            if url:
+                forums[url] = name
+
+        print(f"\n[{link}] Found {len(forums)} forums")
+        for url, name in forums.items():
+            if url not in all_forums:
+                all_forums.add(url)
+                forum_out.write(url + "\n")
+            # optional: keep printing
+            # print(name, "->", url)
+
+        # Threads
+        thread_anchors = soup.select('div.structItem-cell--main a[href^="/threads/"]')
+
+        threads = set()
+        for a in thread_anchors:
+            href = a.get("href", "")
+            if href:
+                threads.add(urljoin(link, href))
+
+        print(f"[{link}] Found {len(threads)} threads")
+        for t in sorted(threads):
+            if t not in all_threads:
+                all_threads.add(t)
+                thread_out.write(t + "\n")
+
+print(f"\nTOTAL unique forums saved: {len(all_forums)}")
+print(f"TOTAL unique threads saved: {len(all_threads)}")
