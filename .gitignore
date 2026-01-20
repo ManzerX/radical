@@ -1,2 +1,3 @@
 # zet hier alle bestanden en mappen die je wilt negeren. Door naam of extensie te specificeren.
 *.env
+venv/
