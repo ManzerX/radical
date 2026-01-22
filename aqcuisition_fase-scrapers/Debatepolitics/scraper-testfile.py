@@ -1,3 +1,4 @@
+# bestand bedoeld om een beetje te klooien met stukken code, zonder de code in de echte scraper te vervuilen.
 from bs4 import BeautifulSoup
 import requests
 
