@@ -1,0 +1,5 @@
+# Preferred keywords — one per line or comma-separated
+# Lines starting with # are ignored
+US, America, USA
+immigration
+deportation
