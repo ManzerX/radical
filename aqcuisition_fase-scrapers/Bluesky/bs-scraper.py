@@ -3,6 +3,7 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.common.keys import Keys
 
 import time
 import os
@@ -29,6 +30,7 @@ def login(driver,url):
 
     driver.find_element(By.CSS_SELECTOR,'button[data-testid=loginNextButton]').click()
 
+    time.sleep(1.0)
 
 def scroll_to_bottom(driver):
     SCROLL_PAUSE_TIME = 1.0
@@ -47,7 +49,8 @@ def scroll_to_bottom(driver):
         last_height = new_height
 
 def post_scraper(url, driver):
-    zoektermen = ['test','test2']
+    TIME_RANGE = 'since:2025-01-20 until:2026-01-20 '
+    zoektermen = ['testingggg','waaaaaaaaaaahhh']
     data = {
         "date":[],
         "message":[],
@@ -56,19 +59,23 @@ def post_scraper(url, driver):
         "media":[]
     }
     for term in zoektermen:
-        driver.get(url + term)
+        search_bar = driver.find_element(By.CSS_SELECTOR,'[role=search]')
+        search_bar.send_keys(TIME_RANGE + term)
+        search_bar.send_keys(Keys.ENTER)
+
         scroll_to_bottom(driver)
-        posts = driver.find_elements(By.CSS_SELECTOR,"div[class=css-g5y9jx r-18u37iz r-uaa2di]")
+        
+        posts = driver.find_elements(By.CSS_SELECTOR,".css-g5y9jx r-18u37iz r-uaa2di")
 
         for post in posts:
             print(post)
 
 
 if __name__ == '__main__':
-    url = "https://bsky.app/search?q=since%3A2025-01-20+until%3A2026-01-20+"
+    url = "https://bsky.app/search?q="
     options = Options()
-    options.add_argument('--disable-blink-features=AutomationControlled')
+    # options.add_argument('--disable-blink-features=AutomationControlled')
     driver = webdriver.Firefox(options=options)
     login(driver,url)
-    # posts = post_scraper(url, driver)
+    posts = post_scraper(url, driver)
     # driver.quit()
