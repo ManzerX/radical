@@ -1,6 +1,0 @@
-# Required keywords — one per line or comma-separated
-# Lines starting with # are ignored
-ICE
-# detention
-# border control
-Raid
