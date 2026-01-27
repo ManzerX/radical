@@ -4,6 +4,7 @@ from search_crawler import search_videos
 from keyword_config import MUST_KEYWORDS, SHOULD_KEYWORDS
 
 from datetime import datetime, timezone
+import argparse
 import json
 import os
 import time
@@ -72,8 +73,46 @@ for query in SEARCH_QUERIES:
 print(f"[+] {len(all_video_ids)} unieke video’s gevonden")
 
 # =====================
-# LIGHT SCRAPE
+# LIGHT SCRAPE (collect, then sort + write)
 # =====================
+# Sorteerprioriteit: lijst met velden in aflopende belang (hoogste eerst).
+# Standaard: eerst likes, dan views, dan comment_count. Alle velden aflopend.
+# DEFAULT_SORT_PRIORITY = ["likes", "views", "comment_count"]
+
+#def parse_args():
+#    p = argparse.ArgumentParser(description="Scrape YouTube metadata and write sorted dataset")
+#    p.add_argument(
+#        "--sort",
+#        "-s",
+#        default=",".join(DEFAULT_SORT_PRIORITY),
+#        help=("Comma-separated sort priority (highest first). "
+#              "Example: --sort likes,views,comment_count")
+#    )
+#    p.add_argument(
+#        "--preset",
+#        "-p",
+#        choices=["engagement"],
+#        help=("Use a named preset for sort priority. Available: 'engagement'"
+#              " (maps to likes, comment_count, views)")
+#    )
+#    return p.parse_args()
+#
+#
+#args = parse_args()
+#
+## Handle preset override
+#if getattr(args, "preset", None):
+#    if args.preset == "engagement":
+#        # engagement: focus on likes and comments first, then views
+#        SORT_PRIORITY = ["likes", "comment_count", "views"]
+#else:
+#    SORT_PRIORITY = [s.strip() for s in args.sort.split(",") if s.strip()]
+#
+#print(f"[+] Sorteerprioriteit ingesteld: {SORT_PRIORITY}")
+#
+#collected = []
+
+
 for idx, video_id in enumerate(all_video_ids, start=1):
     try:
         print(f"[{idx}/{len(all_video_ids)}] Metadata scrapen {video_id}")
@@ -101,19 +140,37 @@ for idx, video_id in enumerate(all_video_ids, start=1):
             "channel_title": data["channel_title"],
             "published_at": data["published_at"],
 
-            "views": data["views"],
-            "likes": data["likes"],
-            "comment_count": data["comment_count"],
-            "duration_seconds": data["duration_seconds"],
+            "views": data.get("views", 0),
+            "likes": data.get("likes", 0),
+            "comment_count": data.get("comment_count", 0),
+            "duration_seconds": data.get("duration_seconds", 0),
 
             "keyword_relevance": relevance
         }
 
-        with open(DATASET_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(light_item, ensure_ascii=False) + "\n")
+        # If the video scraper provides dislikes (third-party), include it
+        if "dislikes" in data:
+            light_item["dislikes"] = data.get("dislikes", 0)
 
-        print(f"    [OK] Opgeslagen (score={relevance['score']})")
+        collected.append(light_item)
+
+        print(f"    [OK] Verzameld (score={relevance['score']})")
         time.sleep(SLEEP_SECONDS)
 
     except Exception as e:
         print(f"    [ERROR] Fout bij video {video_id}: {e}")
+
+# Sorteer de verzamelde items op de opgegeven prioriteit (aflopend per veld)
+def sort_items(items, priority):
+    def key_fn(it):
+        return tuple(-int(it.get(f, 0) or 0) for f in priority)
+    return sorted(items, key=key_fn)
+
+sorted_items = sort_items(collected, SORT_PRIORITY)
+
+# Schrijf resultaat naar dataset (overschrijf bestaande)
+with open(DATASET_PATH, "w", encoding="utf-8") as f:
+    for item in sorted_items:
+        f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+print(f"[+] Geschreven {len(sorted_items)} items naar {DATASET_PATH}")
