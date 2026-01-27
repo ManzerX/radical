@@ -19,19 +19,20 @@ def login(client):
     return client
 
 def gather_posts(client):
-    query = """ice raids"""
+    queries = ["""ice raids"""]
 
     cursor = None
     bs_posts = []
 
-    while True:
-        fetched = posts = client.app.bsky.feed.search_posts(params={'q': query, 'cursor': cursor})
-        bs_posts = bs_posts + fetched.posts
+    for query in queries:
+        while True:
+            fetched = posts = client.app.bsky.feed.search_posts(params={'q': query, 'cursor': cursor})
+            bs_posts = bs_posts + fetched.posts
 
-        if not fetched.cursor:
-            break
+            if not fetched.cursor:
+                break
 
-        cursor = fetched.cursor
+            cursor = fetched.cursor
 
     # for post in bs_posts:
     #     print(post)
@@ -40,9 +41,10 @@ def gather_posts(client):
 
 def sort_posts(posts):
     saved_posts = []
+
     for post in posts:
             if datetime(2025,1,20,0,0,0,0,tzinfo=timezone.utc) <= parser.parse(post.record.created_at) <= datetime(2026,1,20,0,0,0,0,tzinfo=timezone.utc):
-                post = {
+                record = {
                         'uri':post.uri,
                         'text':post.record.text,
                         'likes':post.like_count,
@@ -53,11 +55,11 @@ def sort_posts(posts):
                         'account':post.author.handle,
                         'posted_at':post.record.created_at
                     }
-                saved_posts.append(post)
-
+                saved_posts.append(record)
     return saved_posts
 
 def export_posts(posts):
+
     data_dir = Path("aqcuisition_fase-scrapers\Bluesky\Data")
     data_dir.mkdir(parents=True, exist_ok=True)
     post_file = data_dir / "bs-posts.jsonl.gz"
