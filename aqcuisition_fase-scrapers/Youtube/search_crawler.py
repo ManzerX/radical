@@ -1,7 +1,7 @@
 def search_videos(
     youtube,
     query,
-    max_videos=100,
+    max_videos=200,
     relevance_language="en"
 ):
     video_ids = []
@@ -12,7 +12,7 @@ def search_videos(
             part="id",
             q=query,
             type="video",
-            maxResults=500,
+            maxResults=200,
             pageToken=page_token,
             relevanceLanguage=relevance_language
         ).execute()
