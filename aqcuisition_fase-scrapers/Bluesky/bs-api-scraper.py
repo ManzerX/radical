@@ -18,7 +18,7 @@ def login(client):
 
 def gather_posts(client):
 
-    query = """testingggg"""
+    query = """ice raids"""
 
     cursor = None
     bs_posts = []
@@ -38,13 +38,24 @@ def gather_posts(client):
     return bs_posts
 
 def sort_posts(posts):
-    saved_posts = []
+    saved_posts =[]
+
     for post in posts:
-        for item in post:
-            if 'record' in item:
-                if datetime(2025,1,20,0,0,0,0,tzinfo=timezone.utc) <= parser.parse(item[1].created_at) <= datetime(2026,1,20,0,0,0,0,tzinfo=timezone.utc):
-                    print(item[1].created_at)
-                    print(item[1].text)
+            if datetime(2025,1,20,0,0,0,0,tzinfo=timezone.utc) <= parser.parse(post.record.created_at) <= datetime(2026,1,20,0,0,0,0,tzinfo=timezone.utc):
+                saved_posts.append(
+                    {
+                        'uri':post.uri,
+                        'text':post.record.text,
+                        'likes':post.like_count,
+                        'replies':post.reply_count,
+                        'reposts':post.repost_count,
+                        'quotes':post.quote_count,
+                        'scraped_at':datetime.now(),
+                        'account':post.author.handle,
+                        'posted_at':post.record.created_at
+                    }
+                )
+    print(saved_posts)
 
 if __name__ == '__main__':
     client = Client()
