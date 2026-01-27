@@ -2,8 +2,10 @@ from atproto import Client
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 from dateutil import parser
+from pathlib import Path
 import os
-import pandas as pd
+import gzip
+import json
 
 
 def login(client):
@@ -17,20 +19,20 @@ def login(client):
     return client
 
 def gather_posts(client):
-
-    query = """testingggg"""
+    queries = ["""ice raids"""]
 
     cursor = None
     bs_posts = []
 
-    while True:
-        fetched = posts = client.app.bsky.feed.search_posts(params={'q': query, 'cursor': cursor})
-        bs_posts = bs_posts + fetched.posts
+    for query in queries:
+        while True:
+            fetched = posts = client.app.bsky.feed.search_posts(params={'q': query, 'cursor': cursor})
+            bs_posts = bs_posts + fetched.posts
 
-        if not fetched.cursor:
-            break
+            if not fetched.cursor:
+                break
 
-        cursor = fetched.cursor
+            cursor = fetched.cursor
 
     # for post in bs_posts:
     #     print(post)
@@ -39,15 +41,39 @@ def gather_posts(client):
 
 def sort_posts(posts):
     saved_posts = []
+
     for post in posts:
-        for item in post:
-            if 'record' in item:
-                if datetime(2025,1,20,0,0,0,0,tzinfo=timezone.utc) <= parser.parse(item[1].created_at) <= datetime(2026,1,20,0,0,0,0,tzinfo=timezone.utc):
-                    print(item[1].created_at)
-                    print(item[1].text)
+            if datetime(2025,1,20,0,0,0,0,tzinfo=timezone.utc) <= parser.parse(post.record.created_at) <= datetime(2026,1,20,0,0,0,0,tzinfo=timezone.utc):
+                record = {
+                        'uri':post.uri,
+                        'text':post.record.text,
+                        'likes':post.like_count,
+                        'replies':post.reply_count,
+                        'reposts':post.repost_count,
+                        'quotes':post.quote_count,
+                        'scraped_at_local_time':datetime.now().strftime(r'%Y-%m-%d %H:%M:%S.%f'),
+                        'account':post.author.handle,
+                        'posted_at':post.record.created_at
+                    }
+                saved_posts.append(record)
+    return saved_posts
+
+def export_posts(posts):
+
+    data_dir = Path("aqcuisition_fase-scrapers\Bluesky\Data")
+    data_dir.mkdir(parents=True, exist_ok=True)
+    post_file = data_dir / "bs-posts.jsonl.gz"
+
+    for post in posts:
+        line = json.dumps(post, ensure_ascii=False) + "\n"
+
+        with gzip.open(post_file, "ab") as f:
+            f.write(line.encode("utf-8")) 
+
 
 if __name__ == '__main__':
     client = Client()
     logged_in_client = login(client)
     posts = gather_posts(logged_in_client)
-    sort_posts(posts)
+    posts = sort_posts(posts)
+    export_posts(posts)
