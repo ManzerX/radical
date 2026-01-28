@@ -18,14 +18,14 @@ MAX_PAGES_PER_THREAD = 500
 
 # ---- input files ----
 THREADS_FILE = Path("thread-url-file.txt")
-KEYWORDS_CSV = Path("keywords.csv")  # <- jouw csv bestand
+KEYWORDS_CSV = Path("termen_2.csv")  # <- keywords csv bestand
 
 # ---- output ----
-DATA_DIR = Path("data/debatepolitics")
+DATA_DIR = Path("data/threads/debatepolitics")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 MATCHES_OUT = DATA_DIR / "keyword_matches.jsonl.gz"
-DONE_THREADS_FILE = DATA_DIR / "state_threads_done.txt"
+DONE_THREADS_FILE = DATA_DIR / "state_threads_done-keywords.txt"
 
 ICE_PREFIX = "ice"  # hardcoded string prefix
 
@@ -42,23 +42,35 @@ def load_lines(path: Path) -> list[str]:
 
 def load_keywords_from_csv(path: Path) -> list[str]:
     """
-    Reads keywords from the first column of a CSV.
-    Skips empty cells.
+    Works with:
+    - normal CSV (comma)
+    - TSV (tab)
+    - keywords in row 1 across columns (A1, B1, C1...)
+    Reads ALL cells, dedupes, keeps order.
     """
     if not path.exists():
         return []
-    out = []
-    with path.open("r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.reader(f)
-        for row in reader:
-            if not row:
-                continue
-            kw = (row[0] or "").strip()
-            if not kw:
-                continue
-            out.append(kw)
-    return out
 
+    raw = path.read_text(encoding="utf-8-sig")
+    delimiter = "\t" if ("\t" in raw and raw.count("\t") >= raw.count(",")) else ","
+
+    keywords = []
+    with path.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.reader(f, delimiter=delimiter)
+        for row in reader:
+            for cell in row:
+                kw = (cell or "").strip()
+                if kw:
+                    keywords.append(kw)
+
+    seen = set()
+    out = []
+    for k in keywords:
+        kn = k.lower()
+        if kn not in seen:
+            seen.add(kn)
+            out.append(k)
+    return out
 
 def append_gz_jsonl(path: Path, obj: dict):
     line = json.dumps(obj, ensure_ascii=False) + "\n"
