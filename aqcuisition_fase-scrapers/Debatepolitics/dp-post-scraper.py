@@ -1,428 +1,337 @@
+#!/usr/bin/env python3
 import csv
 import gzip
 import json
 import re
-import time
-from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
-from urllib.parse import urljoin
+from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
-import requests
-from bs4 import BeautifulSoup
+import scrapy
+from scrapy.crawler import CrawlerProcess
 
-# -------------------
-# Config
-# -------------------
-BASE = "https://debatepolitics.com/"
-HEADERS = {"User-Agent": "Mozilla/5.0"}
-TIMEOUT = 25
-DELAY_SECONDS = 0.8
-MAX_PAGES_PER_THREAD = 500  # safety cap
+# =========================
+# CONFIG (pas dit aan)
+# =========================
+START_URL = "https://debatepolitics.com/"
+TERMS_CSV = "termen_2.csv"          # ligt in dezelfde map
+TERMS_COL = ""              # kolomnaam in termen_2.csv
+OUT_FILE = "ice+term-uitkeyword.jsonl.gz"
 
-ICE_PREFIX = "ice"  # hardcoded prefix
-
-THREADS_FILE = Path("thread-url-file.txt")
-KEYWORDS_CSV = Path("termen_2.csv")  # your keywords file (csv/tsv OK)
-
-DATA_DIR = Path("data/debatepolitics")
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-MATCHES_OUT = DATA_DIR / "matches.jsonl.gz"
-DONE_THREADS_FILE = DATA_DIR / "state_threads_done.txt"
-SUMMARY_OUT = DATA_DIR / "summary.json"
+MAX_PAGES = 200000                  # hard cap
+DOWNLOAD_DELAY = 0.15               # vriendelijker crawlen
+CONCURRENCY = 16
+# =========================
 
 
-# -------------------
-# Helpers
-# -------------------
-def now_iso():
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
-def load_lines(path: Path) -> list[str]:
-    if not path.exists():
-        return []
-    return [ln.strip() for ln in path.read_text(encoding="utf-8-sig").splitlines() if ln.strip()]
+def normalize_space(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "")).strip()
 
 
-def append_gz_jsonl(path: Path, obj: dict):
-    line = json.dumps(obj, ensure_ascii=False) + "\n"
-    with gzip.open(path, "ab") as f:
-        f.write(line.encode("utf-8"))
-
-
-def normalize_thread_url(url: str) -> str:
-    if url.startswith("/"):
-        url = urljoin(BASE, url)
-    return url.split("#")[0]
-
-
-def extract_thread_id(thread_url: str) -> int | None:
-    m = re.search(r"\.(\d+)/?$", thread_url)
-    return int(m.group(1)) if m else None
-
-
-def clean_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
-
-
-def fetch_soup(url: str) -> BeautifulSoup:
-    r = requests.get(url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
-    r.raise_for_status()
-    return BeautifulSoup(r.text, "html.parser")
-
-
-def find_next_page_url(soup: BeautifulSoup, current_url: str) -> str | None:
-    a = soup.select_one('a[rel="next"]')
-    if a and a.get("href"):
-        return urljoin(current_url, a["href"])
-
-    a = soup.select_one("a.pageNav-jump--next")
-    if a and a.get("href"):
-        return urljoin(current_url, a["href"])
-
-    return None
-
-
-# -------------------
-# Keyword loader (CSV/TSV; reads ALL cells)
-# -------------------
-def load_keywords_flexible_csv(path: Path) -> list[str]:
+def load_ice_prefixed_terms(path: str, prefix: str = "ice ") -> List[str]:
     """
-    Works with:
-    - comma-separated CSV
-    - tab-separated TSV (your example)
-    - keywords in first row across columns (A1, B1, C1...)
-    Reads ALL cells, trims, dedupes case-insensitive preserving order.
+    Leest ALLE kolomnamen uit termen_2.csv
+    en maakt er keywords van als: 'ice <kolomnaam>'
     """
-    if not path.exists():
-        return []
+    with open(path, "r", encoding="utf-8", newline="") as f:
+        reader = csv.reader(f)
+        header = next(reader)  # eerste rij = kolomnamen
 
-    raw = path.read_text(encoding="utf-8-sig")
-    delimiter = "\t" if ("\t" in raw and raw.count("\t") >= raw.count(",")) else ","
-
-    keywords = []
-    with path.open("r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.reader(f, delimiter=delimiter)
-        for row in reader:
-            for cell in row:
-                kw = (cell or "").strip()
-                if kw:
-                    keywords.append(kw)
-
-    # Dedupe preserve order
-    seen = set()
-    out = []
-    for k in keywords:
-        kn = k.lower()
-        if kn not in seen:
-            seen.add(kn)
-            out.append(k)
-    return out
-
-
-def compile_phrases_with_ice(keywords: list[str]) -> list[tuple[str, re.Pattern]]:
-    """
-    phrase = 'ice <keyword>'
-    Use case-insensitive substring match (escaped).
-    """
-    compiled = []
-    for kw in keywords:
-        phrase = f"{ICE_PREFIX} {kw}".strip()
-        pat = re.compile(re.escape(phrase), re.IGNORECASE)
-        compiled.append((phrase, pat))
-    return compiled
-
-
-def match_phrases(text: str, compiled: list[tuple[str, re.Pattern]]) -> list[str]:
-    hits = []
-    for phrase, pat in compiled:
-        if pat.search(text):
-            hits.append(phrase)
-    return hits
-
-
-# -------------------
-# Post parsing (XenForo)
-# -------------------
-def extract_links_and_media(post_root: BeautifulSoup, page_url: str) -> tuple[list[dict], list[dict]]:
-    links = []
-    media = []
-
-    # Images (src or lazy-load attrs)
-    for img in post_root.select("img"):
-        src = img.get("src") or img.get("data-src") or img.get("data-original")
-        if not src:
+    terms = []
+    for col_name in header:
+        col_name = col_name.strip()
+        if not col_name:
             continue
-        media.append({
-            "type": "image",
-            "url": urljoin(page_url, src),
-            "alt": img.get("alt")
-        })
+        terms.append(f"{prefix}{col_name}")
 
-    # Iframes (youtube embeds etc.)
-    for iframe in post_root.select("iframe"):
-        src = iframe.get("src")
-        if not src:
-            continue
-        abs_src = urljoin(page_url, src)
-        lower = abs_src.lower()
-        if "youtube.com" in lower or "youtu.be" in lower:
-            vid = None
-            m = re.search(r"(?:embed/|v=)([A-Za-z0-9_-]{6,})", abs_src)
-            if m:
-                vid = m.group(1)
-            media.append({"type": "youtube", "url": abs_src, "video_id": vid})
-        else:
-            media.append({"type": "embed", "url": abs_src})
-
-    # Links (incl youtube links)
-    for a in post_root.select("a[href]"):
-        href = a.get("href")
-        if not href:
-            continue
-        abs_href = urljoin(page_url, href)
-        links.append({"url": abs_href, "text": a.get_text(" ", strip=True)})
-
-        lower = abs_href.lower()
-        if "youtube.com/watch" in lower or "youtu.be/" in lower:
-            vid = None
-            m = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{6,})", abs_href)
-            if m:
-                vid = m.group(1)
-            media.append({"type": "youtube", "url": abs_href, "video_id": vid})
-
-    return links, media
+    # uniek + langste eerst (betere matching)
+    return sorted(set(terms), key=len, reverse=True)
 
 
-def parse_posts_from_thread_page(soup: BeautifulSoup, page_url: str) -> list[dict]:
-    posts = []
-    message_nodes = soup.select("article.message") or soup.select("div.message")
 
-    for msg in message_nodes:
-        # post_id (fallbacks)
-        post_id = None
-        dc = msg.get("data-content", "")
-        m = re.search(r"post-(\d+)", dc)
-        if m:
-            post_id = int(m.group(1))
+@dataclass
+class TermMatcher:
+    terms: List[str]
 
-        if not post_id:
-            mid = msg.get("id", "")
-            m = re.search(r"(\d+)", mid)
-            if m:
-                post_id = int(m.group(1))
+    def __post_init__(self):
+        self._compiled = [(t, re.compile(re.escape(t), re.IGNORECASE)) for t in self.terms]
 
-        # author
-        author = None
-        a_user = (
-            msg.select_one("a.username")
-            or msg.select_one(".message-name a")
-            or msg.select_one(".message-userDetails .username")
-        )
-        if a_user:
-            author = a_user.get_text(strip=True)
-
-        # created_at
-        created_at = None
-        t = msg.select_one("time[datetime]")
-        if t and t.get("datetime"):
-            created_at = t["datetime"]
-
-        # content root (fallbacks)
-        content = (
-            msg.select_one(".message-body .bbWrapper")
-            or msg.select_one(".message-content .bbWrapper")
-            or msg.select_one(".message-body")
-            or msg.select_one(".bbWrapper")
-        )
-        if not content:
-            continue
-
-        content_html = str(content)
-        content_text = clean_text(content.get_text(" ", strip=True))
-        links, media = extract_links_and_media(content, page_url)
-
-        posts.append({
-            "post_id": post_id,
-            "author": author,
-            "created_at": created_at,
-            "content": {"text": content_text, "html": content_html},
-            "entities": {"links": links},
-            "media": media,
-        })
-
-    return posts
+    def find_all(self, text: str) -> List[str]:
+        hits = []
+        for t, rx in self._compiled:
+            if rx.search(text):
+                hits.append(t)
+        return hits
 
 
-# -------------------
-# Thread scraping (MATCH ONLY)
-# -------------------
-def scrape_thread(
-    thread_url: str,
-    compiled_phrases: list[tuple[str, re.Pattern]],
-    done_threads: set[str],
-    counters: Counter,
-    totals: dict
-):
-    thread_url = normalize_thread_url(thread_url)
-    if thread_url in done_threads:
-        print(f"SKIP (done): {thread_url}")
-        return
+class JsonlGzPipeline:
+    def __init__(self, out_file: str):
+        self.out_file = out_file
+        self._fh = None
 
-    thread_id = extract_thread_id(thread_url)
-    page_url = thread_url
-    page_num = 0
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(crawler.settings.get("OUT_FILE"))
 
-    matched_posts_in_thread = 0
-    visited_posts_in_thread = 0
+    def open_spider(self, spider):
+        self._fh = gzip.open(self.out_file, "wt", encoding="utf-8")
 
-    while page_url and page_num < MAX_PAGES_PER_THREAD:
-        page_num += 1
-        time.sleep(DELAY_SECONDS)
+    def close_spider(self, spider):
+        if self._fh:
+            self._fh.close()
 
-        try:
-            soup = fetch_soup(page_url)
-        except Exception as e:
-            print(f"ERROR fetching {page_url}: {e}")
-            totals["errors"] += 1
-            break
+    def process_item(self, item, spider):
+        self._fh.write(json.dumps(dict(item), ensure_ascii=False) + "\n")
+        self._fh.flush()
+        return item
 
-        # thread title
-        title = None
-        h1 = soup.select_one("h1.p-title-value")
-        if h1:
-            title = h1.get_text(strip=True)
 
-        # forum url (breadcrumb)
-        forum_url = None
-        bc = soup.select_one('nav.breadcrumbs a[href^="/forums/"]')
-        if bc and bc.get("href"):
-            forum_url = urljoin(page_url, bc["href"])
+class DebatePoliticsSpider(scrapy.Spider):
+    name = "debatepolitics_posts_by_terms"
 
-        posts = parse_posts_from_thread_page(soup, page_url)
+    def __init__(self, start_url: str, terms_csv: str, terms_col: str, max_pages: int, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.start_urls = [start_url]
+        self.max_pages = int(max_pages)
+        self.pages_seen = 0
 
-        totals["pages_visited"] += 1
-        visited_posts_in_thread += len(posts)
-        totals["posts_visited"] += len(posts)
+        netloc = urlparse(start_url).netloc.replace("www.", "")
+        self.allowed_domains = [netloc]
+        self.base_netloc = netloc
 
-        scraped_at = now_iso()
+        terms = load_ice_prefixed_terms(terms_csv, prefix = "ice ")
+        if not terms:
+            raise ValueError(f"Geen termen gevonden in {terms_csv} (kolom '{terms_col}' of fallback eerste kolom).")
+        self.matcher = TermMatcher(terms)
 
-        for p in posts:
-            # Search in text + URLs
-            url_blob = " ".join([x["url"] for x in p["entities"]["links"]]) if p["entities"]["links"] else ""
-            haystack = f'{p["content"]["text"]} {url_blob}'
+    # -------- URL helpers --------
+    def _same_domain(self, url: str) -> bool:
+        netloc = urlparse(url).netloc.replace("www.", "")
+        return netloc == self.base_netloc
 
-            hits = match_phrases(haystack, compiled_phrases)
+    def _skip_url(self, url: str) -> bool:
+        u = url.lower()
+        return any(x in u for x in [
+            "javascript:",
+            "/login",
+            "/register",
+            "/logout",
+            "/account",
+            "/members/",
+            "/help",
+            "/search",
+            "/attachments/",
+            "/goto/",
+            "#",
+        ])
+
+    def _looks_like_forum_or_thread(self, url: str) -> bool:
+        u = url.lower()
+        return any(p in u for p in [
+            "/threads/",
+            "/forums/",
+            "showthread",
+            "forumdisplay",
+            "thread",
+            "t=",
+            "f=",
+            "page-",
+            "page=",
+        ])
+
+    # -------- metadata helpers --------
+    def _page_context(self, response) -> Dict[str, Optional[str]]:
+        title = normalize_space(response.css("title::text").get() or "") or None
+        h1 = normalize_space(" ".join(response.css("h1 *::text, h1::text").getall())) or None
+        thread_title = h1 or title
+
+        crumbs = [normalize_space(t) for t in response.css(
+            ".p-breadcrumbs *::text, nav.breadcrumb *::text, .breadcrumb *::text"
+        ).getall()]
+        crumbs = [c for c in crumbs if c]
+        forum_path = " > ".join(dict.fromkeys(crumbs)) if crumbs else None
+
+        return {"page_title": title, "thread_title": thread_title, "forum_path": forum_path}
+
+    def _extract_posts(self, response):
+        ctx = self._page_context(response)
+
+        found = False
+
+        # XenForo-ish
+        for msg in response.css("article.message"):
+            found = True
+            post_id = msg.attrib.get("id") or msg.attrib.get("data-content") or None
+            author = normalize_space("".join(msg.css(".message-name a::text, a.username::text").getall())) or None
+            dt = msg.css("time::attr(datetime)").get() or normalize_space(msg.css("time::text").get() or "") or None
+
+            text = " ".join(t.strip() for t in msg.css(".message-body *::text, .bbWrapper *::text").getall() if t.strip())
+            text = normalize_space(text)
+            quote_count = len(msg.css("blockquote").getall())
+
+            post_href = msg.css('a[href*="#post-"]::attr(href), a[href*="/post-"]::attr(href)').get()
+            post_url = response.urljoin(post_href) if post_href else response.url
+
+            if text:
+                yield {**ctx,
+                       "source_page_url": response.url,
+                       "post_url": post_url,
+                       "post_id": post_id,
+                       "author": author,
+                       "datetime": dt,
+                       "quote_count": quote_count,
+                       "text": text}
+
+        # vBulletin-ish
+        for post in response.css("li.postbit, div.postbit, div[id^='post_']"):
+            found = True
+            post_id = post.attrib.get("id") or None
+            author = normalize_space("".join(post.css("a.username::text, a.bigusername::text").getall())) or None
+            dt = post.css("time::attr(datetime), .date::text, .postdate::text").get()
+            dt = normalize_space(dt) if dt else None
+
+            text = " ".join(t.strip() for t in post.css(".content *::text, .postcontent *::text, .post_message *::text").getall() if t.strip())
+            text = normalize_space(text)
+            quote_count = len(post.css("blockquote").getall())
+
+            post_href = post.css("a[href*='#post']::attr(href), a[href*='showpost']::attr(href)").get()
+            post_url = response.urljoin(post_href) if post_href else response.url
+
+            if text:
+                yield {**ctx,
+                       "source_page_url": response.url,
+                       "post_url": post_url,
+                       "post_id": post_id,
+                       "author": author,
+                       "datetime": dt,
+                       "quote_count": quote_count,
+                       "text": text}
+
+        # Fallback
+        if not found:
+            for b in response.css("div.message, div.post, div.postbody, div.content"):
+                text = " ".join(t.strip() for t in b.css("*::text").getall() if t.strip())
+                text = normalize_space(text)
+                if len(text) >= 250:
+                    yield {**ctx,
+                           "source_page_url": response.url,
+                           "post_url": response.url,
+                           "post_id": None,
+                           "author": None,
+                           "datetime": None,
+                           "quote_count": len(b.css("blockquote").getall()),
+                           "text": text}
+
+    def parse(self, response):
+        self.logger.info("VISITING %s", response.url)
+        if self.pages_seen >= self.max_pages:
+            return
+        self.pages_seen += 1
+
+        # Emit matching posts
+        for post in self._extract_posts(response):
+            hits = self.matcher.find_all(post["text"])
             if not hits:
-                continue  # MATCH-ONLY
+                continue
 
-            matched_posts_in_thread += 1
-            totals["posts_matched"] += 1
-
-            for h in hits:
-                counters[h] += 1
-
-            record = {
-                "source": "debatepolitics",
-                "scraped_at": scraped_at,
-                "thread": {
-                    "id": thread_id,
-                    "url": thread_url,
-                    "title": title,
-                    "forum_url": forum_url,
-                    "page_url": page_url,
-                    "page_num": page_num,
-                },
-                "post": {
-                    "id": p["post_id"],
-                    "author": p["author"],
-                    "created_at": p["created_at"],
-                },
-                "content": p["content"],
-                "entities": p["entities"],
-                "media": p["media"],
-                "keywords_hit": hits,
+            text = post["text"]
+            snippet = text[:350] + ("…" if len(text) > 350 else "")
+            yield {
+                "matched_terms": hits,
+                "scraped_at_utc": now_iso(),
+                "page_title": post.get("page_title"),
+                "thread_title": post.get("thread_title"),
+                "forum_path": post.get("forum_path"),
+                "source_page_url": post.get("source_page_url"),
+                "post_url": post.get("post_url"),
+                "post_id": post.get("post_id"),
+                "author": post.get("author"),
+                "datetime": post.get("datetime"),
+                "quote_count": post.get("quote_count"),
+                "snippet": snippet,
+                "text": text,
             }
 
-            append_gz_jsonl(MATCHES_OUT, record)
+        # Pagination next
+        for href in response.css("a::attr(href)").getall():
+            if not href:
+                continue
 
-        next_url = find_next_page_url(soup, page_url)
-        page_url = next_url if next_url and next_url != page_url else None
+            url = response.urljoin(href)
+            low = url.lower()
 
-        print(
-            f"Thread {thread_id} page {page_num}: "
-            f"posts={len(posts)} matched_in_thread={matched_posts_in_thread}"
-        )
+            if not self._same_domain(url):
+                continue
+            if self._skip_url(url):
+                continue
 
-    # mark done (even if 0 matches; still "processed")
-    done_threads.add(thread_url)
-    with DONE_THREADS_FILE.open("a", encoding="utf-8") as f:
-        f.write(thread_url + "\n")
+            # === THREADS (hoogste prioriteit) ===
+            if "/threads/" in low:
+                yield scrapy.Request(url, callback=self.parse, priority=20)
+                continue
 
-    totals["threads_processed"] += 1
-    if matched_posts_in_thread > 0:
-        totals["threads_with_matches"] += 1
+            # === THREAD PAGINATION ===
+            if "/page-" in low and "/threads/" in low:
+                yield scrapy.Request(url, callback=self.parse, priority=15)
+                continue
 
-    print(
-        f"DONE thread: {thread_url} | pages={page_num} "
-        f"posts_visited={visited_posts_in_thread} matches={matched_posts_in_thread}"
-    )
+            # === FORUM LIJSTEN (nodig om nieuwe threads te vinden) ===
+            if "/forums/" in low:
+                yield scrapy.Request(url, callback=self.parse, priority=10)
+                continue
 
 
-def main():
-    thread_urls = load_lines(THREADS_FILE)
-    if not thread_urls:
-        print(f"No thread URLs found in {THREADS_FILE}")
-        return
+def run():
+    settings = {
+         "ROBOTSTXT_OBEY": True,
 
-    keywords = load_keywords_flexible_csv(KEYWORDS_CSV)
-    if not keywords:
-        print(f"No keywords found in {KEYWORDS_CSV}")
-        return
+        # agressieve maar nette crawling
+        "CONCURRENT_REQUESTS": 12,
+        "CONCURRENT_REQUESTS_PER_DOMAIN": 6,
 
-    compiled_phrases = compile_phrases_with_ice(keywords)
+        "DOWNLOAD_DELAY": 0.35,
+        "RANDOMIZE_DOWNLOAD_DELAY": True,
 
-    done_threads = set(load_lines(DONE_THREADS_FILE))
-    counters = Counter()
+        # Autothrottle aan: past zich aan als site traag wordt
+        "AUTOTHROTTLE_ENABLED": True,
+        "AUTOTHROTTLE_START_DELAY": 0.4,
+        "AUTOTHROTTLE_MAX_DELAY": 15.0,
+        "AUTOTHROTTLE_TARGET_CONCURRENCY": 3.0,
 
-    totals = {
-        "started_at": now_iso(),
-        "threads_input": len(thread_urls),
-        "threads_already_done": len(done_threads),
-        "threads_processed": 0,
-        "threads_with_matches": 0,
-        "pages_visited": 0,
-        "posts_visited": 0,
-        "posts_matched": 0,
-        "errors": 0,
+        # Timeouts/retries zodat je niet “sterft” op 1 hapering
+        "DOWNLOAD_TIMEOUT": 60,
+        "DNS_TIMEOUT": 30,
+        "RETRY_ENABLED": True,
+        "RETRY_TIMES": 6,
+        "RETRY_HTTP_CODES": [408, 429, 500, 502, 503, 504, 522, 524],
+
+        "COOKIES_ENABLED": False,
+        "TELNETCONSOLE_ENABLED": False,
+
+        "LOG_LEVEL": "INFO",
+        "LOGSTATS_INTERVAL": 30,
+
+        "ITEM_PIPELINES": {__name__ + ".JsonlGzPipeline": 300},
+        "OUT_FILE": OUT_FILE,
+        "OUT_FILE": OUT_FILE,
+        "JOBDIR": "jobstate-debatepolitics",
     }
 
-    print(f"Threads input: {len(thread_urls)}")
-    print(f"Keywords loaded: {len(keywords)}")
-    print(f"Search phrases: {len(compiled_phrases)} (prefix='{ICE_PREFIX} ')")
-    print(f"Already done: {len(done_threads)}")
-    print(f"Writing MATCHES only to: {MATCHES_OUT}")
-    print("First 10 phrases:", [p for p, _ in compiled_phrases[:10]])
-    print()
-
-    for url in thread_urls:
-        scrape_thread(url, compiled_phrases, done_threads, counters, totals)
-
-    totals["finished_at"] = now_iso()
-    totals["top_keywords"] = counters.most_common(50)
-
-    SUMMARY_OUT.write_text(json.dumps(totals, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    print("\n=== SUMMARY ===")
-    print(f"Threads processed: {totals['threads_processed']}")
-    print(f"Threads with matches: {totals['threads_with_matches']}")
-    print(f"Posts visited: {totals['posts_visited']}")
-    print(f"Posts matched: {totals['posts_matched']}")
-    print(f"Errors: {totals['errors']}")
-    print(f"Wrote summary to: {SUMMARY_OUT}")
+    process = CrawlerProcess(settings=settings)
+    process.crawl(
+        DebatePoliticsSpider,
+        start_url=START_URL,
+        terms_csv=TERMS_CSV,
+        terms_col=TERMS_COL,
+        max_pages=MAX_PAGES,
+    )
+    process.start()
 
 
 if __name__ == "__main__":
-    main()
+    run()
