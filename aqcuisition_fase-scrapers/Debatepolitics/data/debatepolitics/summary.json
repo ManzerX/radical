@@ -1,0 +1,78 @@
+{
+  "started_at": "2026-01-28T11:19:54.427951Z",
+  "threads_input": 1198,
+  "threads_already_done": 0,
+  "threads_processed": 1198,
+  "threads_with_matches": 172,
+  "pages_visited": 5518,
+  "posts_visited": 121644,
+  "posts_matched": 4586,
+  "errors": 1,
+  "finished_at": "2026-01-28T13:58:42.550011Z",
+  "top_keywords": [
+    [
+      "ice agent",
+      3089
+    ],
+    [
+      "ice officer",
+      1370
+    ],
+    [
+      "ice shooting",
+      216
+    ],
+    [
+      "ice president",
+      132
+    ],
+    [
+      "ice protest",
+      70
+    ],
+    [
+      "ice raid",
+      52
+    ],
+    [
+      "ice arrest",
+      51
+    ],
+    [
+      "ice illegal",
+      15
+    ],
+    [
+      "ice deportation",
+      10
+    ],
+    [
+      "ice immigration",
+      5
+    ],
+    [
+      "ice maga",
+      3
+    ],
+    [
+      "ice felon",
+      3
+    ],
+    [
+      "ice trump",
+      2
+    ],
+    [
+      "ice gang",
+      2
+    ],
+    [
+      "ice mask",
+      2
+    ],
+    [
+      "ice government",
+      1
+    ]
+  ]
+}
