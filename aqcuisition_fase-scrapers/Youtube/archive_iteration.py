@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Archive the current iteration of dataset_light.jsonl to dataset_light_test.jsonl
-with iteration classification, then reset dataset_light.jsonl for the next iteration.
+Archive the current iteration of yt_results.jsonl to yt_results_archive.jsonl
+with iteration classification, then reset yt_results.jsonl for the next iteration.
 """
 
 import json
@@ -10,8 +10,8 @@ from datetime import datetime
 
 BASE_DIR = os.path.dirname(__file__)
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-DATASET_PATH = os.path.join(OUTPUT_DIR, "dataset_light.jsonl")
-TEST_PATH = os.path.join(OUTPUT_DIR, "dataset_light_test.jsonl")
+DATASET_PATH = os.path.join(OUTPUT_DIR, "yt_results.jsonl")
+TEST_PATH = os.path.join(OUTPUT_DIR, "yt_results_archive.jsonl")
 
 def get_next_iteration():
     """Determine the next iteration number."""
@@ -38,7 +38,7 @@ def archive_iteration():
     """Archive current iteration and reset dataset."""
     
     if not os.path.exists(DATASET_PATH):
-        print("❌ dataset_light.jsonl niet gevonden!")
+        print("❌ yt_results.jsonl niet gevonden!")
         return
     
     # Read current dataset
@@ -49,11 +49,11 @@ def archive_iteration():
                 if line.strip():
                     records.append(json.loads(line))
     except Exception as e:
-        print(f"❌ Fout bij lezen dataset_light.jsonl: {e}")
+        print(f"❌ Fout bij lezen yt_results.jsonl: {e}")
         return
     
     if not records:
-        print("⚠️  dataset_light.jsonl is leeg, niets om te archiveren")
+        print("⚠️  yt_results.jsonl is leeg, niets om te archiveren")
         return
     
     # Get iteration number
@@ -76,18 +76,18 @@ def archive_iteration():
         with open(TEST_PATH, 'a', encoding='utf-8') as f:
             for record_json in archived_records:
                 f.write(record_json + '\n')
-        print(f"✓ {len(archived_records)} records gearchiveerd naar dataset_light_test.jsonl")
+        print(f"✓ {len(archived_records)} records gearchiveerd naar yt_results_archive.jsonl")
     except Exception as e:
-        print(f"❌ Fout bij schrijven naar dataset_light_test.jsonl: {e}")
+        print(f"❌ Fout bij schrijven naar yt_results_archive.jsonl: {e}")
         return
     
     # Clear current dataset
     try:
         with open(DATASET_PATH, 'w', encoding='utf-8') as f:
             pass  # Empty file
-        print(f"✓ dataset_light.jsonl gereset en klaar voor volgende iteratie")
+        print(f"✓ yt_results.jsonl gereset en klaar voor volgende iteratie")
     except Exception as e:
-        print(f"❌ Fout bij resetten dataset_light.jsonl: {e}")
+        print(f"❌ Fout bij resetten yt_results.jsonl: {e}")
         return
     
     # Show summary
@@ -98,7 +98,7 @@ def archive_iteration():
     except:
         pass
     
-    print(f"\n📈 Totaal records in dataset_light_test.jsonl: {test_records}")
+    print(f"\n📈 Totaal records in yt_results_archive.jsonl: {test_records}")
     print(f"✅ Klaar! Je kunt nu opnieuw beginnen met iteratie {iteration + 1}\n")
 
 if __name__ == "__main__":

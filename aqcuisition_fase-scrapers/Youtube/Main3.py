@@ -41,7 +41,7 @@ SLEEP_BETWEEN_VIDEOS = 0.5
 
 BASE_DIR = os.path.dirname(__file__)
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-DATASET_PATH = os.path.join(OUTPUT_DIR, "dataset_light.jsonl")
+DATASET_PATH = os.path.join(OUTPUT_DIR, "yt_results.jsonl")
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 

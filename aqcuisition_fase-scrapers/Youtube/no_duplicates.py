@@ -5,10 +5,10 @@ import os
 
 BASE_DIR = os.path.dirname(__file__)
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-DATASET_PATH = os.path.join(OUTPUT_DIR, "dataset_light_test.jsonl")
+DATASET_PATH = os.path.join(OUTPUT_DIR, "yt_results_archive.jsonl")
 
-INPUT_FILE = os.path.join(OUTPUT_DIR, "dataset_light_test.jsonl")
-OUTPUT_FILE = os.path.join(OUTPUT_DIR, "dataset_light_uniq.jsonl")
+INPUT_FILE = os.path.join(OUTPUT_DIR, "yt_results_archive.jsonl")
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, "yt_results_uniq.jsonl")
 
 
 def engagement_score(item):

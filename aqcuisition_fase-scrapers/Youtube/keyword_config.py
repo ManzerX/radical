@@ -22,27 +22,6 @@ MUST_KEYWORDS = [
 
 ]
 
-
-# Default lijst voor het geval er geen CSV wordt gevonden
-# DEFAULT_SHOULD_KEYWORDS = [
-    #"raid",
-    #"raids",
-    #"deportation",
-    #"deportations",
-    #"enforcement",
-    #"arrest",
-    #"detention",
-    #"border",
-    #"shooting",
-    #"officer",
-    #"immigration",
-    #"USA",
-    #"United States",
-    #"agent",
-    #"patrol",
-#]
-
-
 def load_should_keywords(csv_path: Optional[str] = None) -> List[str]:
     """Load should-keywords from CSV.
 
@@ -84,8 +63,7 @@ def load_should_keywords(csv_path: Optional[str] = None) -> List[str]:
             # If any error occurs reading this candidate, try the next one
             continue
 
-    return DEFAULT_SHOULD_KEYWORDS.copy()
-
+    
 
 # Module-level variable: will load CSV if present next to this file
 SHOULD_KEYWORDS = load_should_keywords()

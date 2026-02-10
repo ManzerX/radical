@@ -7,14 +7,14 @@ import argparse
 # =====================
 BASE_DIR = os.path.dirname(__file__)
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-DATASET_PATH = os.path.join(OUTPUT_DIR, "dataset_light.jsonl")
+DATASET_PATH = os.path.join(OUTPUT_DIR, "yt_results_uniq.jsonl")
 
 # Sorteerprioriteit: lijst met velden in aflopende belang (hoogste eerst).
 # Standaard: eerst likes, dan views, dan comment_count. Alle velden aflopend.
 DEFAULT_SORT_PRIORITY = ["likes", "views", "comment_count"]
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Sorteer een bestaande dataset_light.jsonl zonder opnieuw te scrapen.")
+    p = argparse.ArgumentParser(description="Sorteer een bestaande yt_results.jsonl zonder opnieuw te scrapen.")
     p.add_argument(
         "--sort",
         "-s",
@@ -33,7 +33,7 @@ def parse_args():
         "--input",
         "-i",
         default=DATASET_PATH,
-        help="Path to input file (default: output/dataset_light.jsonl)"
+        help="Path to input file (default: output/yt_results.jsonl)"
     )
     p.add_argument(
         "--output",
