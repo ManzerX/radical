@@ -1,3 +1,0 @@
-- scraper maken voor links uit deeper-url-file.txt te halen.
-- scraper maken om youtube links te scrapen.
-# class="ytp-youtube-button ytp-button yt-uix-sessionlink" YouTube links uit de HTML te halen.
