@@ -1,4 +1,4 @@
-import argparse
+﻿import argparse
 import json
 import os
 import time
@@ -26,86 +26,161 @@ def _http_reason(exc):
         return ""
 
 
+def _get_first_replies(youtube, parent_id, max_replies=3, debug=False, max_retries=3):
+    replies = []
+    page_token = None
+    page = 1
+
+    while len(replies) < max_replies:
+        retries = 0
+        response = None
+
+        while retries <= max_retries:
+            try:
+                response = youtube.comments().list(
+                    part="snippet",
+                    parentId=parent_id,
+                    maxResults=min(100, max_replies - len(replies)),
+                    pageToken=page_token,
+                    textFormat="plainText",
+                ).execute()
+                break
+            except HttpError as e:
+                reason = _http_reason(e)
+
+                if reason in ("commentsDisabled", "videoNotFound"):
+                    if debug:
+                        print(f"[SKIP] replies {parent_id}: {reason}")
+                    return []
+
+                if reason in ("quotaExceeded", "dailyLimitExceeded"):
+                    raise RuntimeError(f"quota_exceeded_replies:{parent_id}") from e
+
+                retries += 1
+                if retries > max_retries:
+                    raise RuntimeError(
+                        f"http_error_replies:{parent_id}:{reason or 'unknown'}"
+                    ) from e
+
+                backoff = 1.5 ** retries
+                if debug:
+                    print(
+                        f"[WARN] replies {parent_id} page {page} retry {retries}/{max_retries} "
+                        f"reason={reason or 'unknown'} wacht={backoff:.1f}s"
+                    )
+                time.sleep(backoff)
+
+        if response is None:
+            break
+
+        items = response.get("items", [])
+        for item in items:
+            snippet = item.get("snippet", {})
+            replies.append(
+                {
+                    "author": snippet.get("authorDisplayName"),
+                    "text": snippet.get("textDisplay"),
+                    "likes": snippet.get("likeCount", 0),
+                    "published_at": snippet.get("publishedAt"),
+                }
+            )
+            if len(replies) >= max_replies:
+                break
+
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
+        page += 1
+
+    return replies
+
+
 def get_top_comments(youtube, video_id, max_comments=200, debug=False, max_retries=3):
     comments = []
     page_token = None
     page = 1
 
-    # Eerst relevance; bij structureel 0 items valt dit terug naar time.
-    for order in ("relevance", "time"):
-        comments = []
-        page_token = None
-        page = 1
+    while len(comments) < max_comments:
+        retries = 0
+        response = None
 
-        while len(comments) < max_comments:
-            retries = 0
-            response = None
+        while retries <= max_retries:
+            try:
+                response = youtube.commentThreads().list(
+                    part="snippet",
+                    videoId=video_id,
+                    maxResults=100,
+                    pageToken=page_token,
+                    order="time",
+                    textFormat="plainText",
+                ).execute()
+                break
+            except HttpError as e:
+                reason = _http_reason(e)
 
-            while retries <= max_retries:
-                try:
-                    response = youtube.commentThreads().list(
-                        part="snippet",
-                        videoId=video_id,
-                        maxResults=100,
-                        pageToken=page_token,
-                        order=order,
-                        textFormat="plainText",
-                    ).execute()
-                    break
-                except HttpError as e:
-                    reason = _http_reason(e)
-
-                    if reason in ("commentsDisabled", "videoNotFound"):
-                        if debug:
-                            print(f"[SKIP] {video_id}: {reason}")
-                        return []
-
-                    if reason in ("quotaExceeded", "dailyLimitExceeded"):
-                        raise RuntimeError(f"quota_exceeded:{video_id}") from e
-
-                    retries += 1
-                    if retries > max_retries:
-                        raise RuntimeError(f"http_error:{video_id}:{reason or 'unknown'}") from e
-
-                    backoff = 1.5 ** retries
+                if reason in ("commentsDisabled", "videoNotFound"):
                     if debug:
-                        print(
-                            f"[WARN] {video_id} page {page} order={order} retry {retries}/{max_retries} "
-                            f"reason={reason or 'unknown'} wacht={backoff:.1f}s"
-                        )
-                    time.sleep(backoff)
+                        print(f"[SKIP] {video_id}: {reason}")
+                    return []
 
-            if response is None:
-                break
+                if reason in ("quotaExceeded", "dailyLimitExceeded"):
+                    raise RuntimeError(f"quota_exceeded:{video_id}") from e
 
-            items = response.get("items", [])
-            if debug:
-                print(
-                    f"[DEBUG] {video_id} page={page} order={order} items={len(items)} "
-                    f"next={'yes' if response.get('nextPageToken') else 'no'}"
+                retries += 1
+                if retries > max_retries:
+                    raise RuntimeError(f"http_error:{video_id}:{reason or 'unknown'}") from e
+
+                backoff = 1.5 ** retries
+                if debug:
+                    print(
+                        f"[WARN] {video_id} page {page} order=time retry {retries}/{max_retries} "
+                        f"reason={reason or 'unknown'} wacht={backoff:.1f}s"
+                    )
+                time.sleep(backoff)
+
+        if response is None:
+            break
+
+        items = response.get("items", [])
+        if debug:
+            print(
+                f"[DEBUG] {video_id} page={page} order=time items={len(items)} "
+                f"next={'yes' if response.get('nextPageToken') else 'no'}"
+            )
+
+        for item in items:
+            top_obj = item.get("snippet", {}).get("topLevelComment", {})
+            top = top_obj.get("snippet", {})
+            top_id = top_obj.get("id")
+            reply_count = item.get("snippet", {}).get("totalReplyCount", 0)
+            replies = []
+
+            if top_id and reply_count > 0:
+                replies = _get_first_replies(
+                    youtube=youtube,
+                    parent_id=top_id,
+                    max_replies=3,
+                    debug=debug,
+                    max_retries=max_retries,
                 )
 
-            for item in items:
-                top = item.get("snippet", {}).get("topLevelComment", {}).get("snippet", {})
-                comments.append(
-                    {
-                        "author": top.get("authorDisplayName"),
-                        "text": top.get("textDisplay"),
-                        "likes": top.get("likeCount", 0),
-                        "published_at": top.get("publishedAt"),
-                        "reply_count": item.get("snippet", {}).get("totalReplyCount", 0),
-                    }
-                )
-                if len(comments) >= max_comments:
-                    break
-
-            page_token = response.get("nextPageToken")
-            if not page_token:
+            comments.append(
+                {
+                    "author": top.get("authorDisplayName"),
+                    "text": top.get("textDisplay"),
+                    "likes": top.get("likeCount", 0),
+                    "published_at": top.get("publishedAt"),
+                    "reply_count": reply_count,
+                    "replies": replies,
+                }
+            )
+            if len(comments) >= max_comments:
                 break
-            page += 1
 
-        if comments:
-            return comments
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
+        page += 1
 
     return comments
 
@@ -122,6 +197,21 @@ def iter_jsonl(path):
                 print(f"[WARN] Ongeldige JSON op regel {line_no}: {e}")
 
 
+def load_processed_video_ids(output_path):
+    processed_ids = set()
+    if not os.path.exists(output_path):
+        return processed_ids
+
+    for line_no, item in iter_jsonl(output_path):
+        video_id = item.get("video_id")
+        if not video_id:
+            print(f"[WARN] Outputregel {line_no} heeft geen video_id")
+            continue
+        processed_ids.add(video_id)
+
+    return processed_ids
+
+
 def run(input_path, output_path, max_comments, sleep_seconds, debug=False):
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Inputbestand niet gevonden: {input_path}")
@@ -129,15 +219,27 @@ def run(input_path, output_path, max_comments, sleep_seconds, debug=False):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     youtube = get_youtube_client()
+    already_processed_ids = load_processed_video_ids(output_path)
+    already_processed_count = len(already_processed_ids)
+
     processed = 0
     skipped = 0
+    skipped_existing = 0
 
-    with open(output_path, "w", encoding="utf-8") as out_f:
+    if already_processed_count:
+        print(
+            f"[RESUME] Bestaande output gevonden. Al verwerkt: {already_processed_count} video(s)."
+        )
+
+    with open(output_path, "a", encoding="utf-8") as out_f:
         for line_no, item in iter_jsonl(input_path):
             video_id = item.get("video_id")
             if not video_id:
                 skipped += 1
                 print(f"[SKIP] Regel {line_no} heeft geen video_id")
+                continue
+            if video_id in already_processed_ids:
+                skipped_existing += 1
                 continue
 
             try:
@@ -171,6 +273,7 @@ def run(input_path, output_path, max_comments, sleep_seconds, debug=False):
 
             out_f.write(json.dumps(result, ensure_ascii=False) + "\n")
             processed += 1
+            already_processed_ids.add(video_id)
 
             print(
                 f"[OK] {video_id}: meta_comments={result['comments']} "
@@ -181,7 +284,8 @@ def run(input_path, output_path, max_comments, sleep_seconds, debug=False):
                 time.sleep(sleep_seconds)
 
     print(
-        f"\nKlaar. Verwerkt: {processed}, overgeslagen/fout: {skipped}. "
+        f"\nKlaar. Nieuw verwerkt: {processed}, al aanwezig overgeslagen: {skipped_existing}, "
+        f"overgeslagen/fout: {skipped}. Totaal output: {already_processed_count + processed}. "
         f"Output: {output_path}"
     )
 
