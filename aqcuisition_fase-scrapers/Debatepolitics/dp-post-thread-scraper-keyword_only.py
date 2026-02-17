@@ -21,7 +21,7 @@ THREADS_FILE = Path("thread-url-file.txt")
 KEYWORDS_CSV = Path("termen_2.csv")  # <- keywords csv bestand
 
 # ---- output ----
-DATA_DIR = Path("data/threads/debatepolitics")
+DATA_DIR = Path("trash")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 MATCHES_OUT = DATA_DIR / "keyword_matches.jsonl.gz"
