@@ -4,3 +4,8 @@ venv/
 Niet meer in gebruik/
 .vscode/
 models/
+
+# Jupyter Notebook checkpoints:
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+*-checkpoint.ipynb
