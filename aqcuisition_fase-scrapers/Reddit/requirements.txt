@@ -1,0 +1,10 @@
+flask
+werkzeug
+requests
+requests[socks]
+pysocks
+rich
+yt-dlp
+static-ffmpeg
+stem
+psutil
