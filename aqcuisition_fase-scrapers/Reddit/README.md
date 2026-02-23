@@ -18,7 +18,7 @@ Deze applicatie stelt gebruikers in staat om berichten, reacties, afbeeldingen e
     -   Gebruikersnaam: `admin`
     -   Wachtwoord: `admin`
 
-## Docent Informatie
+## Extra Informatie
 
 Dit project is geoptimaliseerd voor Windows.
 - **Wachtwoord:** De inloggegevens zijn standaard `admin` / `admin`.
@@ -42,3 +42,4 @@ Alle gedownloade bestanden bevinden zich in de map `exports`.
 ## Installatie op Server (Docker)
 
 Raadpleeg [DEPLOYMENT.md](DEPLOYMENT.md) voor instructies omtrent de installatie van deze applicatie op een Proxmox-server.
+
