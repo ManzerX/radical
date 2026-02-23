@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 import requests
 from urllib.parse import urljoin
-
+# This script reads URLs from "url-file.txt", scrapes each page for forum and thread links, and saves them to separate files.
 with open("url-file.txt", "r", encoding="utf-8") as f:
     urls = [line.strip() for line in f if line.strip()]
 
@@ -31,11 +31,10 @@ with open("deeper-forum-url-file.txt", "w", encoding="utf-8") as forum_out, \
             if url not in all_forums:
                 all_forums.add(url)
                 forum_out.write(url + "\n")
-            # optional: keep printing
-            # print(name, "->", url)
+            # print(name, "->", url) extra info about forum name, can be useful for debugging or future use
 
-        # Threads
-        thread_anchors = soup.select('div.structItem-cell--main a[href^="/threads/"]')
+        # Threads - look for links in the main content area that start with "/threads/"
+        thread_anchors = soup.select('div.structItem-cell--main a[href^="/threads/"]') 
 
         threads = set()
         for a in thread_anchors:

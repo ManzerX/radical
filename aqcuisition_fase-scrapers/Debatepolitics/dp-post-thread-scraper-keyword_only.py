@@ -21,10 +21,10 @@ THREADS_FILE = Path("thread-url-file.txt")
 KEYWORDS_CSV = Path("termen_2.csv")  # <- keywords csv bestand
 
 # ---- output ----
-DATA_DIR = Path("data/threads/debatepolitics")
+DATA_DIR = Path("trash")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-MATCHES_OUT = DATA_DIR / "keyword_matches.jsonl.gz"
+MATCHES_OUT = DATA_DIR / "matches.jsonl.gz"
 DONE_THREADS_FILE = DATA_DIR / "state_threads_done-keywords.txt"
 
 ICE_PREFIX = "ice"  # hardcoded string prefix
@@ -212,10 +212,6 @@ def parse_posts_from_thread_page(soup: BeautifulSoup, page_url: str) -> list[dic
 
 
 def compile_phrases_with_ice(keywords: list[str]) -> list[tuple[str, re.Pattern]]:
-    """
-    For each keyword -> phrase = "ice <keyword>"
-    Match case-insensitive substring (escaped).
-    """
     compiled = []
     for kw in keywords:
         phrase = f"{ICE_PREFIX} {kw}".strip()
@@ -273,7 +269,7 @@ def scrape_thread(thread_url: str, compiled_phrases: list[tuple[str, re.Pattern]
 
             hits = match_phrases(haystack, compiled_phrases)
             if not hits:
-                continue  # <-- KEYWORD-ONLY: skip posts without hits
+                continue  # skip posts without hits
 
             matches_in_thread += 1
             record = {

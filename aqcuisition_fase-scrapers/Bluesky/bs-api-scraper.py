@@ -53,7 +53,7 @@ def gather_posts(client):
         'limit': 25
         }
 
-        for loop in range(300):
+        for loop in range(500):
             time.sleep(0.25)
             if cursor:
                 params["cursor"] = cursor
@@ -70,6 +70,10 @@ def gather_posts(client):
                 post_number = post_number + 1
                 print(f"{post_number} not fetched, {e}")
 
+            if not response.posts:
+                print(f'No results, {query}')
+                break
+
             cursor = response.cursor
 
             export_posts(sort_posts(response.posts))
@@ -82,28 +86,28 @@ def gather_posts(client):
 
 def sort_posts(posts):
     saved_posts = []
-
-    for post in posts:
-        record = {
-            'uri':post.uri,
-            'text':post.record.text,
-            'likes':post.like_count,
-            'replies':post.reply_count,
-            'reposts':post.repost_count,
-            'quotes':post.quote_count,
-            'scraped_at_local_time':datetime.now().strftime(r'%Y-%m-%d %H:%M:%S.%f'),
-            'account':post.author.handle,
-            'posted_at':post.record.created_at
-            }
-        saved_posts.append(record)
-        print(record['posted_at'])
+    if posts:
+        for post in posts:
+            record = {
+                'uri':post.uri,
+                'text':post.record.text,
+                'likes':post.like_count,
+                'replies':post.reply_count,
+                'reposts':post.repost_count,
+                'quotes':post.quote_count,
+                'scraped_at_local_time':datetime.now().strftime(r'%Y-%m-%d %H:%M:%S.%f'),
+                'account':post.author.handle,
+                'posted_at':post.record.created_at
+                }
+            saved_posts.append(record)
+            print(record['posted_at'])
     return saved_posts
 
 def export_posts(posts):
 
     data_dir = Path("aqcuisition_fase-scrapers\Bluesky\Data")
     data_dir.mkdir(parents=True, exist_ok=True)
-    post_file = data_dir / "bs-posts.jsonl.gz"
+    post_file = data_dir / "bs-posts.jsonl_2.gz"
 
     for post in posts:
         line = json.dumps(post, ensure_ascii=False) + "\n"
