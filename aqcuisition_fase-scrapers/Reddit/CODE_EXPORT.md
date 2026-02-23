@@ -1,7 +1,6 @@
 # Reddit Scraper - Code Export
 
 Dit document bevat de volledige, opgeschoonde broncode van de Reddit Scraper applicatie. 
-Gevoelige informatie is verwijderd en de code is voorzien van educatief commentaar.
 
 ## Inhoudsopgave
 1. [Vereisten (requirements.txt)](#vereisten-requirementstxt)
