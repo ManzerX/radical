@@ -1,4 +1,4 @@
-# Reddit Scraper Documentatie
+# Reddit Scraper
 
 Deze applicatie stelt gebruikers in staat om berichten, reacties, afbeeldingen en video's van Reddit te extraheren. Alle gegevens worden lokaal opgeslagen. De resultaten zijn vervolgens via een webinterface te raadplegen.
 
@@ -42,4 +42,5 @@ Alle gedownloade bestanden bevinden zich in de map `exports`.
 ## Installatie op Server (Docker)
 
 Raadpleeg [DEPLOYMENT.md](DEPLOYMENT.md) voor instructies omtrent de installatie van deze applicatie op een Proxmox-server.
+
 
