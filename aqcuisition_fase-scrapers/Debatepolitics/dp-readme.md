@@ -8,9 +8,18 @@ inloggen/registreren, zoeken(hier kan gefilterd worden op leden van het forum of
 
 **Wat is XenForo?**
 
-debatepolitics draait op XenForo, vandaar dat er in de code vaak in de comments naar XenForo wordt verwezen. Dit komt simpelweg doordat de url-patronen identiek aan elkaar zijn.
+debatepolitics draait op XenForo, vandaar dat er in de code vaak in de comments naar XenForo wordt verwezen. Dit komt simpelweg doordat de url-patronen bijna identiek aan elkaar zijn.
 
-Bronnen voor de code:
+**De map opdeling van Debatepolitics**
+
+Deze map is opgedeeld in 3 andere mappen namelijk, data, oude-scrapers en url-scrapers.
+in debatepolitics map zelf staat de scraper die verantwoordelijk is voor het binnen halen van de posts, zoals in het document code onderbouwing al is vermeld haalt deze de links uit eerder gegenereerde txt bestanden die gemaakt zijn door de url-scrapers.
+die url-scrapers kunnen daarom ook gevonden worden in de map "url-scrapers".
+In de map "oude-scrapers" kunnen scrapers worden gevonden die of de huidige scraper hebben voorgegaan in ontwerp of gewoon niet het gewenste resultaat toonden(met name te weinig posts scrapeten).
+
+Het bestand ""termen_2.csv"" werd als keyword bestand gebruikt om alleen relevante resultaten voor ons onderzoek binnen te halen.
+
+gebruikte bronnen voor de scraper code:
 
 Video's:
 

@@ -1,7 +1,7 @@
 # Radical
 
 Radical is een school project waarbij een groepje studenten(de contributers) onderzoek doen naar de social media engagement rond de Amerikaanse overheidsinstantie ICE(U.S. Immigration and Customs Enforcement).
-Tijdens dit project wordt data verzameld van 3 verschillende social mediaplatformen; Reddit, Youtube, Bluesky en het forum Debatepolitics.
+Tijdens dit project wordt data verzameld van 4 verschillende social mediaplatformen; Reddit, Youtube, Bluesky en het forum Debatepolitics.
 
 ## Indeling github repo
 

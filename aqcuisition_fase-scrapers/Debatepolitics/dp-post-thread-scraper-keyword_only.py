@@ -1,3 +1,4 @@
+# library imports
 import csv
 import gzip
 import json
@@ -9,7 +10,7 @@ from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
-
+# scraper settings
 BASE = "https://debatepolitics.com/"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 TIMEOUT = 25
@@ -30,7 +31,7 @@ DONE_THREADS_FILE = DATA_DIR / "state_threads_done-keywords.txt"
 ICE_PREFIX = "ice"  # hardcoded string prefix
 
 
-def now_iso():
+def now_iso(): # function to get current time in ISO format with Z timezone.
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
