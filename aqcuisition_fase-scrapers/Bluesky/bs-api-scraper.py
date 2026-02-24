@@ -1,27 +1,26 @@
+# imports
 from atproto import Client
 from dotenv import load_dotenv
-from datetime import datetime, timezone
-from dateutil import parser
+from datetime import datetime
 from pathlib import Path
 import os
 import time
-import csv
 import gzip
 import json
 
-
+# logt in met bluesky account, gegevens in .env
 def login(client):
     load_dotenv()
 
     bs_user = os.getenv('USER')
     bs_pass = os.getenv('PASS')
 
-    # client.login(bs_user, bs_pass)
     client = Client()
 
     with open('aqcuisition_fase-scrapers\\Bluesky\\session.txt') as f:
         session_string = f.read()
 
+    # als er een session string doc aanwezig is, gebruik deze. anders: genereer deze
     if session_string:
         profile = client.login(session_string=session_string)
     else:
@@ -35,14 +34,17 @@ def login(client):
 
     return client
 
+# verzamelt posts via api
 def gather_posts(client):
     post_number = 0
 
+    # inlezen zoektermen
     with open("aqcuisition_fase-scrapers\\termen_2.csv",'r') as f:
         content = f.read()
 
     queries = content.split(',')
 
+    # per zoekterm een aparte query, met 25 posts opgehaald per keer
     for query in queries:
         cursor = None
         last = "0"
@@ -53,6 +55,7 @@ def gather_posts(client):
         'limit': 25
         }
 
+        # deze posts worden 500 keer opgehaald, mbv cursor
         for loop in range(500):
             time.sleep(0.25)
             if cursor:
@@ -76,6 +79,7 @@ def gather_posts(client):
 
             cursor = response.cursor
 
+            # posts worden weggeschreven
             export_posts(sort_posts(response.posts))
 
         response = None
@@ -84,6 +88,7 @@ def gather_posts(client):
         print("\n")
         time.sleep(3)
 
+# zet posts om tot dictionary
 def sort_posts(posts):
     saved_posts = []
     if posts:
@@ -103,19 +108,21 @@ def sort_posts(posts):
             print(record['posted_at'])
     return saved_posts
 
+# schrijft posts weg naar locatie
 def export_posts(posts):
 
     data_dir = Path("aqcuisition_fase-scrapers\Bluesky\Data")
     data_dir.mkdir(parents=True, exist_ok=True)
-    post_file = data_dir / "bs-posts.jsonl_2.gz"
+    post_file = data_dir / "bs-posts_2.jsonl.gz"
 
+    # in jsonl.gz format
     for post in posts:
         line = json.dumps(post, ensure_ascii=False) + "\n"
 
         with gzip.open(post_file, "ab") as f:
             f.write(line.encode("utf-8")) 
 
-
+# main
 if __name__ == '__main__':
     client = Client()
     logged_in_client = login(client)
